@@ -193,5 +193,4 @@ To use the supplied raster logos, drop them in `/public/images/` and reference t
 Built for Sinza Universal Company, Kigali, Rwanda.
 Discography and event data reference public sources (Apple Music, CitiMuzik, Afrocharts) which are
 credited on the relevant articles.
-#   s i n z a - u n i v e r s a l - c o m p a n y  
- 
+#
