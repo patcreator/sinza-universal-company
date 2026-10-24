@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1151.0",
+    "aos": "^2.3.4",
     "apify-client": "^2.25.0",
     "bcryptjs": "^3.0.3",
     "dotenv": "17.3.1",
@@ -26,6 +27,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.1.17",
+    "@types/aos": "^3.0.8",
     "@types/node": "22.19.15",
     "@types/pg": "8.18.0",
     "@types/qrcode": "^1.5.6",

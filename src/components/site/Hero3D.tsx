@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState, Suspense } from 'react';
 import ReactDOMServer from 'react-dom/server';
 import Link from 'next/link';
+import AOS from 'aos';
 import {
   Play,
   Ticket,
@@ -80,48 +81,37 @@ const FLOATING_SOCIALS = [
 ];
 
 /* ================================================================
-   Reveal
+   Easing helpers (plain JS, used by the 3D scene)
    ================================================================ */
-function Reveal({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const obs = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setTimeout(() => setVisible(true), delay);
-          obs.disconnect();
-        }
-      },
-      { threshold: 0.1 }
-    );
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, [delay]);
-
-  return (
-    <div
-      ref={ref}
-      style={{
-        opacity: visible ? 1 : 0,
-        transform: visible ? 'translateY(0)' : 'translateY(24px)',
-        transition: `opacity 0.8s cubic-bezier(0.16,1,0.3,1), transform 0.8s cubic-bezier(0.16,1,0.3,1)`,
-      }}
-    >
-      {children}
-    </div>
-  );
-}
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+const easeOutBack = (t: number) => {
+  const c1 = 1.70158;
+  const c3 = c1 + 1;
+  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+};
+const easeOutElastic = (t: number) => {
+  if (t === 0 || t === 1) return t;
+  const c4 = (2 * Math.PI) / 3;
+  return Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
+};
 
 /* ================================================================
    Eyebrow
    ================================================================ */
-function Eyebrow({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+function Eyebrow({
+  children,
+  className = '',
+  ...rest
+}: {
+  children: React.ReactNode;
+  className?: string;
+} & React.HTMLAttributes<HTMLParagraphElement>) {
   return (
-    <p className={`text-xs font-medium uppercase tracking-[0.25em] ${className}`}>
+    <p
+      className={`text-xs font-medium uppercase tracking-[0.25em] ${className}`}
+      {...rest}
+    >
       {children}
     </p>
   );
@@ -160,6 +150,8 @@ function ThreeScene({
       const container = containerRef.current;
       if (!container) return;
 
+      const sceneStart = performance.now();
+
       /* ---------- Scene ---------- */
       const scene = new THREE.Scene();
       scene.background = null;
@@ -172,13 +164,11 @@ function ThreeScene({
         0.1,
         1000
       );
-      camera.position.set(0, 6, 12);
-      const cameraStartZ = 12;
-      const cameraEndZ = 24;
-      const cameraStartY = 6;
-      const cameraEndY = 8.5;
-      const introStart = performance.now();
-      const introDuration = 1600;
+      const camFrom = { y: 4, z: 8 };
+      const camTo = { y: 8.5, z: 24 };
+      const camDelay = 200;
+      const camDuration = 2200;
+      camera.position.set(0, camFrom.y, camFrom.z);
 
       /* ---------- Renderer ---------- */
       const renderer = new THREE.WebGLRenderer({
@@ -219,7 +209,7 @@ function ThreeScene({
       controls.target.set(0, 2.5, 0);
       controls.enablePan = false;
 
-      /* ---------- User interaction tracking ---------- */
+      /* ---------- User interaction: stop intro ---------- */
       let userInteracted = false;
       const markInteracted = () => {
         userInteracted = true;
@@ -257,15 +247,13 @@ function ThreeScene({
         starPos[i + 2] = (Math.random() - 0.5) * 400;
       }
       starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
-      const stars = new THREE.Points(
-        starGeo,
-        new THREE.PointsMaterial({
-          color: 0xffffff,
-          size: 0.13,
-          transparent: true,
-          opacity: 0.5,
-        })
-      );
+      const starMat = new THREE.PointsMaterial({
+        color: 0xffffff,
+        size: 0.13,
+        transparent: true,
+        opacity: 0,
+      });
+      const stars = new THREE.Points(starGeo, starMat);
       scene.add(stars);
 
       /* ---------- Dust ---------- */
@@ -308,17 +296,15 @@ function ThreeScene({
       }
       dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
       dustGeo.setAttribute('color', new THREE.BufferAttribute(dustCol, 3));
-      const dustParticles = new THREE.Points(
-        dustGeo,
-        new THREE.PointsMaterial({
-          size: 0.14,
-          vertexColors: true,
-          transparent: true,
-          opacity: 0.4,
-          blending: THREE.AdditiveBlending,
-          depthWrite: false,
-        })
-      );
+      const dustMat = new THREE.PointsMaterial({
+        size: 0.14,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const dustParticles = new THREE.Points(dustGeo, dustMat);
       scene.add(dustParticles);
 
       /* ---------- Album Squares ---------- */
@@ -358,7 +344,13 @@ function ThreeScene({
           floatOffset: Math.random() * Math.PI * 2,
           floatAmp: 0.4,
           floatSpeed: 0.005,
+          popStart: performance.now() + 600 + index * 150,
+          popDuration: 1100,
+          popEase: 'back',
+          hover: 1,
         };
+
+        plane.scale.setScalar(0);
 
         scene.add(plane);
         albumMeshes.push(plane);
@@ -427,6 +419,7 @@ function ThreeScene({
       Promise.all(
         FLOATING_SOCIALS.map(async (social) => {
           const tex = await makeIconTexture(social.icon, social.color);
+          if (cancelled) return;
           const geo = new THREE.PlaneGeometry(1.4, 1.4);
           const mat = new THREE.MeshBasicMaterial({
             map: tex,
@@ -443,7 +436,14 @@ function ThreeScene({
             floatOffset: Math.random() * Math.PI * 2,
             floatAmp: 0.35,
             floatSpeed: 0.004,
+            popStart: performance.now() + 1200 + Math.random() * 600,
+            popDuration: 1200,
+            popEase: 'elastic',
+            hover: 1,
           };
+
+          mesh.scale.setScalar(0);
+
           scene.add(mesh);
           socialMeshes.push(mesh);
           allInteractive.push(mesh);
@@ -467,6 +467,7 @@ function ThreeScene({
       /* ---------- Raycaster ---------- */
       const raycaster = new THREE.Raycaster();
       const mouseNDC = new THREE.Vector2(0, 0);
+      let hoveredObj: THREE.Object3D | null = null;
 
       const handleMouseMove = (event: MouseEvent) => {
         const rect = renderer.domElement.getBoundingClientRect();
@@ -493,22 +494,39 @@ function ThreeScene({
       renderer.domElement.addEventListener('mousemove', handleMouseMove);
       renderer.domElement.addEventListener('click', handleClick);
 
+      /* ---------- Scale (pop-in * hover) ---------- */
+      const applyScale = (obj: THREE.Object3D, now: number) => {
+        const ud = obj.userData;
+        const raw = clamp01((now - ud.popStart) / ud.popDuration);
+        const eased =
+          ud.popEase === 'elastic' ? easeOutElastic(raw) : easeOutBack(raw);
+        const pop = raw <= 0 ? 0 : eased;
+
+        const targetHover = obj === hoveredObj ? 1.12 : 1;
+        ud.hover += (targetHover - ud.hover) * 0.15;
+
+        obj.scale.setScalar(Math.max(0.0001, pop * ud.hover));
+      };
+
       /* ---------- Animate ---------- */
       const animate = () => {
         animationId = requestAnimationFrame(animate);
-        const elapsed = performance.now() * 0.001;
+        const now = performance.now();
+        const elapsed = now * 0.001;
 
-        /* ---------- Intro camera pull-back ---------- */
-        const introT = Math.min(
-          (performance.now() - introStart) / introDuration,
-          1
-        );
-        const eased = 1 - Math.pow(1 - introT, 3);
-        if (introT < 1 && !userInteracted) {
-          camera.position.z = cameraStartZ + (cameraEndZ - cameraStartZ) * eased;
-          camera.position.y = cameraStartY + (cameraEndY - cameraStartY) * eased;
+        /* Camera intro pull-back */
+        if (!userInteracted) {
+          const t = clamp01((now - sceneStart - camDelay) / camDuration);
+          const e = easeOutCubic(t);
+          camera.position.y = camFrom.y + (camTo.y - camFrom.y) * e;
+          camera.position.z = camFrom.z + (camTo.z - camFrom.z) * e;
         }
 
+        /* Stars + dust fade-in */
+        starMat.opacity = 0.5 * clamp01((now - sceneStart) / 2500);
+        dustMat.opacity = 0.4 * clamp01((now - sceneStart - 500) / 2500);
+
+        /* Dust motion */
         const positions = dustParticles.geometry.attributes.position as THREE.BufferAttribute;
         const arr = positions.array as Float32Array;
         const mX = mouseNDC.x * 18;
@@ -536,6 +554,7 @@ function ThreeScene({
         }
         positions.needsUpdate = true;
 
+        /* Float */
         albumMeshes.forEach((plane) => {
           const ud = plane.userData;
           const offset =
@@ -550,16 +569,27 @@ function ThreeScene({
           s.position.y = ud.originalPos.y + offset;
         });
 
+        /* Hover detection */
         raycaster.setFromCamera(mouseNDC, camera);
         const intersects = raycaster.intersectObjects(allInteractive, true);
         let hoverType: string | null = null;
+        let hit: THREE.Object3D | null = null;
         if (intersects.length > 0) {
           let o: THREE.Object3D | null = intersects[0].object;
           while (o && !o.userData.type) o = o.parent;
-          if (o) hoverType = o.userData.type;
+          if (o) {
+            hoverType = o.userData.type;
+            hit = o;
+          }
         }
+        hoveredObj = hit;
+
         renderer.domElement.style.cursor =
           hoverType === 'album' || hoverType === 'social' ? 'pointer' : 'grab';
+
+        /* Apply pop-in + hover scale */
+        albumMeshes.forEach((m) => applyScale(m, now));
+        socialMeshes.forEach((m) => applyScale(m, now));
 
         stars.rotation.y += 0.00006;
         centerSphere.rotation.y += 0.002;
@@ -617,7 +647,7 @@ function ThreeScene({
 }
 
 /* ================================================================
-   MUSIC MODAL (with prev/next/all songs)
+   MUSIC MODAL (AOS animated)
    ================================================================ */
 function MusicModal({
   album,
@@ -632,10 +662,24 @@ function MusicModal({
 }) {
   const [showAll, setShowAll] = useState(false);
 
+  // Reset the "all" panel when album changes
   useEffect(() => {
-    // Reset the "all" panel when album changes
     setShowAll(false);
   }, [album?.id]);
+
+  // Tell AOS about the freshly mounted modal elements
+  useEffect(() => {
+    if (!album) return;
+    const id = window.setTimeout(() => AOS.refreshHard(), 30);
+    return () => window.clearTimeout(id);
+  }, [album?.id, !!album]);
+
+  // Tell AOS about the song list when it opens
+  useEffect(() => {
+    if (!showAll) return;
+    const id = window.setTimeout(() => AOS.refreshHard(), 30);
+    return () => window.clearTimeout(id);
+  }, [showAll]);
 
   if (!album) return null;
 
@@ -660,15 +704,17 @@ function MusicModal({
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-xl p-3 sm:p-6"
       onClick={onClose}
-      style={{ animation: 'heroFadeIn 0.4s ease' }}
+      data-aos="fade"
+      data-aos-duration="350"
+      data-aos-once="true"
     >
       <div
         className="relative flex w-full max-w-2xl flex-col overflow-hidden bg-gradient-to-br from-[#0a0808]/95 to-[#1a1010]/95 backdrop-blur-md shadow-[0_0_60px_rgba(0,0,0,0.7)]"
         onClick={(e) => e.stopPropagation()}
-        style={{
-          animation: 'heroScaleIn 0.3s ease',
-          borderRadius: '24px',
-        }}
+        style={{ borderRadius: '24px' }}
+        data-aos="zoom-in-up"
+        data-aos-duration="600"
+        data-aos-once="true"
       >
         <button
           onClick={onClose}
@@ -680,7 +726,12 @@ function MusicModal({
 
         <div className="p-4 sm:p-5">
           {/* YouTube Embed */}
-          <div className="relative mb-4 aspect-video w-full overflow-hidden rounded-2xl shadow-[0_0_30px_rgba(0,0,0,0.5)]">
+          <div
+            className="relative mb-4 aspect-video w-full overflow-hidden rounded-2xl shadow-[0_0_30px_rgba(0,0,0,0.5)]"
+            data-aos="fade-up"
+            data-aos-delay="150"
+            data-aos-once="true"
+          >
             <iframe
               src={youtubeEmbed}
               title={album.title}
@@ -692,7 +743,13 @@ function MusicModal({
 
           {/* Row: title + artist | prev/next | all | socials */}
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="min-w-0 flex-1">
+            <div
+              key={album.id}
+              className="min-w-0 flex-1"
+              data-aos="fade-left"
+              data-aos-delay="250"
+              data-aos-once="true"
+            >
               <h2 className="font-display text-lg sm:text-xl font-bold text-white">
                 {album.title}
               </h2>
@@ -701,8 +758,12 @@ function MusicModal({
               </p>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
-              {/* Prev */}
+            <div
+              className="flex items-center gap-2 shrink-0"
+              data-aos="fade-up"
+              data-aos-delay="350"
+              data-aos-once="true"
+            >
               <button
                 onClick={goPrev}
                 title="Previous song"
@@ -712,7 +773,6 @@ function MusicModal({
                 <SkipBack size={14} />
               </button>
 
-              {/* Next */}
               <button
                 onClick={goNext}
                 title="Next song"
@@ -722,7 +782,6 @@ function MusicModal({
                 <SkipForward size={14} />
               </button>
 
-              {/* All songs */}
               <button
                 onClick={() => setShowAll((v) => !v)}
                 title="All songs"
@@ -755,7 +814,7 @@ function MusicModal({
             </div>
           </div>
 
-          {/* All songs list — transparent dropdown */}
+          {/* All songs list */}
           {showAll && (
             <div
               className="mt-4 max-h-56 overflow-y-auto bg-white/5 backdrop-blur-md"
@@ -763,12 +822,21 @@ function MusicModal({
                 borderRadius: '16px',
                 border: '1px solid rgba(255,255,255,0.08)',
               }}
+              data-aos="fade-down"
+              data-aos-duration="400"
+              data-aos-once="true"
             >
               <ul className="py-1">
                 {albums.map((a, i) => {
                   const isActive = a.id === album.id;
                   return (
-                    <li key={a.id}>
+                    <li
+                      key={a.id}
+                      data-aos="fade-right"
+                      data-aos-delay={i * 60}
+                      data-aos-duration="400"
+                      data-aos-once="true"
+                    >
                       <button
                         onClick={() => onNavigate(a)}
                         className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-all ${
@@ -784,6 +852,7 @@ function MusicModal({
                         >
                           {String(i + 1).padStart(2, '0')}
                         </span>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={a.img}
                           alt=""
@@ -821,6 +890,7 @@ export default function Hero3D({ theme, t, lang = 'en', heroOffset = 0 }: Hero3D
   const [loaded, setLoaded] = useState<boolean>(!!theme?.albums);
   const [fxEnabled, setFxEnabled] = useState<boolean>(true);
 
+  /* ---------- Load albums ---------- */
   useEffect(() => {
     if (theme?.albums) return;
     let cancelled = false;
@@ -865,8 +935,13 @@ export default function Hero3D({ theme, t, lang = 'en', heroOffset = 0 }: Hero3D
   return (
     <>
       <style>{`
-        @keyframes heroFadeIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes heroScaleIn { from { transform: scale(0.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        @keyframes heroKenBurns { from { transform: scale(1.15); } to { transform: scale(1); } }
+        @keyframes heroGlow {
+          0%, 100% { text-shadow: 0 0 0 rgba(247,222,221,0); }
+          50% { text-shadow: 0 0 24px rgba(247,222,221,0.55); }
+        }
+        .hero-video { animation: heroKenBurns 8s ease-out both; }
+        .hero-accent { animation: heroGlow 4.4s ease-in-out infinite; }
       `}</style>
 
       <section className="relative min-h-[100svh] overflow-hidden bg-ink">
@@ -877,7 +952,7 @@ export default function Hero3D({ theme, t, lang = 'en', heroOffset = 0 }: Hero3D
           style={{ transform: `translate3d(0, ${heroOffset}px, 0)` }}
         >
           <video
-            className="h-full w-full object-cover object-center"
+            className="hero-video h-full w-full object-cover object-center"
             autoPlay
             muted
             loop
@@ -910,53 +985,84 @@ export default function Hero3D({ theme, t, lang = 'en', heroOffset = 0 }: Hero3D
         {/* LAYER 3: Content */}
         <div className="pointer-events-none relative z-10 mx-auto flex min-h-[100svh] max-w-[1600px] flex-col justify-end px-5 pb-16 pt-32 sm:px-8 lg:pl-24 lg:pr-10">
           <div className="pointer-events-auto">
-            <Reveal>
-              <Eyebrow className="text-white/70">
-                Discover our music, get concert tickets and explore our work.
-              </Eyebrow>
-            </Reveal>
+            <Eyebrow
+              className="text-white/70"
+              data-aos="fade-up"
+              data-aos-duration="900"
+            >
+              Discover our music, get concert tickets and explore our work.
+            </Eyebrow>
 
-            <Reveal delay={90}>
-              <h1 className="display-xl mt-6 max-w-[15ch] font-display !text-4xl text-white sm:!text-5xl lg:!text-6xl">
-                Sinza Universal{' '}
-                <span className="italic-voice" style={{ color: '#F7DEDD' }}>
+            <h1 className="display-xl mt-6 max-w-[15ch] font-display !text-4xl text-white sm:!text-5xl lg:!text-6xl">
+              <span
+                className="inline-block"
+                data-aos="fade-up"
+                data-aos-delay="150"
+                data-aos-duration="1000"
+              >
+                Sinza
+              </span>{' '}
+              <span
+                className="inline-block"
+                data-aos="fade-up"
+                data-aos-delay="300"
+                data-aos-duration="1000"
+              >
+                Universal
+              </span>{' '}
+              <span
+                className="inline-block"
+                data-aos="fade-up"
+                data-aos-delay="450"
+                data-aos-duration="1000"
+              >
+                <span
+                  className="hero-accent italic-voice inline-block"
+                  style={{ color: '#F7DEDD' }}
+                >
                   Company
                 </span>
-              </h1>
-            </Reveal>
+              </span>
+            </h1>
 
             <div className="mt-9 grid gap-10 lg:grid-cols-[1.15fr_0.85fr] lg:items-end">
-              <Reveal delay={170}>
-                <div className="mt-8 flex flex-wrap items-center gap-3">
+              <div className="mt-8 flex flex-wrap items-center gap-3">
+                <div data-aos="zoom-in" data-aos-delay="650" data-aos-duration="800">
                   <Link href="/music" className="btn btn-primary">
                     <Play size={16} fill="currentColor" />
                     {translate('hero.cta1')}
                   </Link>
+                </div>
+                <div data-aos="zoom-in" data-aos-delay="800" data-aos-duration="800">
                   <Link href="/concerts" className="btn btn-bone">
                     <Ticket size={16} />
                     {translate('hero.cta2')}
                   </Link>
                 </div>
-              </Reveal>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* FX Toggle — now bottom-center with label */}
-        <button
-          type="button"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setFxEnabled((v) => !v);
-          }}
-          aria-label={fxEnabled ? 'Hide 3D' : 'Show 3D'}
-          title={fxEnabled ? 'Hide 3D' : 'Show 3D'}
-          className="pointer-events-auto absolute bottom-6 left-1/2 z-[60] flex -translate-x-1/2 cursor-pointer items-center gap-2 rounded-full border border-white/20 bg-black/70 px-4 py-2 text-xs font-medium tracking-wider text-white shadow-[0_4px_20px_rgba(0,0,0,0.5)] backdrop-blur-md transition-all hover:scale-105 hover:bg-black/90 active:scale-95"
-        >
-          {fxEnabled ? <Eye size={14} /> : <EyeOff size={14} />}
-          <span>{fxEnabled ? 'Hide 3D' : 'Show 3D'}</span>
-        </button>
+        {/* FX Toggle: wrapper handles centering so AOS's transform doesn't conflict */}
+        <div className="pointer-events-none absolute bottom-6 left-1/2 z-[60] -translate-x-1/2">
+          <div data-aos="fade-up" data-aos-delay="1000" data-aos-duration="800">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setFxEnabled((v) => !v);
+              }}
+              aria-label={fxEnabled ? 'Hide 3D' : 'Show 3D'}
+              title={fxEnabled ? 'Hide 3D' : 'Show 3D'}
+              className="pointer-events-auto flex cursor-pointer items-center gap-2 rounded-full border border-white/20 bg-black/70 px-4 py-2 text-xs font-medium tracking-wider text-white shadow-[0_4px_20px_rgba(0,0,0,0.5)] backdrop-blur-md transition-all hover:scale-105 hover:bg-black/90 active:scale-95"
+            >
+              {fxEnabled ? <Eye size={14} /> : <EyeOff size={14} />}
+              <span>{fxEnabled ? 'Hide 3D' : 'Show 3D'}</span>
+            </button>
+          </div>
+        </div>
       </section>
 
       <MusicModal

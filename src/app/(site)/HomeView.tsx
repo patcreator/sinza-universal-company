@@ -1,16 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
-import { Play, ArrowRight, Ticket, Calendar, MapPin, Disc3, ShoppingBag, Newspaper, Volume2 } from "lucide-react";
-import { Reveal, Eyebrow } from "@/components/site/Reveal";
+import { useEffect, useState } from "react";
+import AOS from "aos";
+import "aos/dist/aos.css";
+import { Play, ArrowRight, MapPin, ShoppingBag, Newspaper, Volume2 } from "lucide-react";
+import { Eyebrow } from "@/components/site/Reveal";
 import { Tilt, Parallax } from "@/components/site/Motion";
 import { ShareButtons } from "@/components/site/ShareButtons";
 import { NewsletterForm } from "@/components/site/NewsletterForm";
 import { playTrack, type PlayerTrack } from "@/components/site/PlayerDock";
-import { openVideo, type VideoItem } from "@/components/site/VideoLightbox";
-import { formatRWF, dayParts, formatDuration, cn } from "@/lib/format";
-import Hero3D  from "@/components/site/Hero3D";
+import { type VideoItem } from "@/components/site/VideoLightbox";
+import { formatRWF, dayParts, formatDuration } from "@/lib/format";
+import Hero3D from "@/components/site/Hero3D";
 import { t } from "@/lib/i18n";
 import { SocialVideos } from "@/components/site/SocialVideos";
 
@@ -26,11 +28,32 @@ export function HomeView(props: {
   lang: string;
 }) {
   const { theme, tracks, albums, concerts, products, posts, videos, lang } = props;
-  const heroRef = useRef<HTMLDivElement>(null);
   const [heroOffset, setHeroOffset] = useState(0);
 
+  /* ---------- AOS init (always on) ---------- */
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    AOS.init({
+      duration: 900,
+      easing: "ease-out-cubic",
+      once: true,
+      offset: 60,
+      disable: false,
+    });
+
+    const refresh = () => AOS.refreshHard();
+    const t1 = window.setTimeout(refresh, 300);
+    const t2 = window.setTimeout(refresh, 1200);
+    window.addEventListener("load", refresh);
+
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.removeEventListener("load", refresh);
+    };
+  }, []);
+
+  /* ---------- Hero parallax offset ---------- */
+  useEffect(() => {
     const onScroll = () => setHeroOffset(Math.min(window.scrollY * 0.22, 260));
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
@@ -41,19 +64,18 @@ export function HomeView(props: {
   const heroVideo = videos[0];
 
   return (
-    <>
-     
+    <div className="overflow-x-clip">
       <Hero3D theme={theme} t={t} lang={lang} heroOffset={heroOffset} />
 
       {/* ---------------- LATEST RELEASE ---------------- */}
       {featured && (
         <section className="mx-auto max-w-[1600px] px-5 py-24 sm:px-8 lg:pl-24 lg:pr-10">
-          <Reveal>
+          <div data-aos="fade-up">
             <Eyebrow>{t(lang, "section.latest")}</Eyebrow>
-          </Reveal>
+          </div>
 
           <div className="mt-10 grid gap-12 lg:grid-cols-[0.95fr_1.05fr] lg:items-center">
-            <Reveal>
+            <div data-aos="fade-right" data-aos-duration="1100">
               <Tilt className="relative">
                 <div className="relative overflow-hidden rounded-[calc(var(--radius)*1.4)] border border-line shadow-2xl">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -85,23 +107,39 @@ export function HomeView(props: {
                   </div>
                 </div>
               </Tilt>
-            </Reveal>
+            </div>
 
-            <Reveal delay={120}>
-              <h2 className="display-lg font-display">
+            <div>
+              <h2
+                className="display-lg font-display"
+                data-aos="fade-left"
+                data-aos-delay="100"
+              >
                 {featured.title}{" "}
                 <span className="italic-voice">— {featured.artist || "Jado Sinza & Esther"}</span>
               </h2>
-              <p className="mt-6 max-w-2xl text-[1.05rem] leading-relaxed text-muted">
+              <p
+                className="mt-6 max-w-2xl text-[1.05rem] leading-relaxed text-muted"
+                data-aos="fade-up"
+                data-aos-delay="200"
+              >
                 {featured.credits}
               </p>
               {featured.lyrics && (
-                <blockquote className="mt-8 border-l-[3px] border-primary pl-6 font-display text-[1.35rem] italic leading-snug">
+                <blockquote
+                  className="mt-8 border-l-[3px] border-primary pl-6 font-display text-[1.35rem] italic leading-snug"
+                  data-aos="fade-up"
+                  data-aos-delay="300"
+                >
                   {featured.lyrics.split("\n")[0]}
                 </blockquote>
               )}
 
-              <div className="mt-8 flex flex-wrap items-center gap-3">
+              <div
+                className="mt-8 flex flex-wrap items-center gap-3"
+                data-aos="zoom-in"
+                data-aos-delay="400"
+              >
                 <button
                   onClick={() => playTrack(featured as PlayerTrack, tracks.map((x) => x as PlayerTrack))}
                   className="btn btn-primary"
@@ -113,10 +151,14 @@ export function HomeView(props: {
                 </Link>
               </div>
 
-              <div className="mt-8 flex flex-wrap items-center gap-3">
+              <div
+                className="mt-8 flex flex-wrap items-center gap-3"
+                data-aos="fade-up"
+                data-aos-delay="500"
+              >
                 <ShareButtons url={`/music?play=${featured.slug}`} title={featured.title} compact />
               </div>
-            </Reveal>
+            </div>
           </div>
         </section>
       )}
@@ -130,8 +172,12 @@ export function HomeView(props: {
         <div className="absolute inset-0 bg-[linear-gradient(105deg,rgba(193,18,31,0.82)_0%,rgba(20,16,15,0.72)_58%,rgba(20,16,15,0.35)_100%)]" />
         <div className="grain absolute inset-0" />
         <div className="relative mx-auto flex h-full max-w-[1600px] items-center px-5 sm:px-8 lg:pl-24 lg:pr-10">
-          <Reveal>
-            <p className="max-w-3xl font-display text-[clamp(1.85rem,4.2vw,3.4rem)] italic leading-[1.08] text-white">
+          <div>
+            <p
+              className="max-w-3xl font-display text-[clamp(1.85rem,4.2vw,3.4rem)] italic leading-[1.08] text-white"
+              data-aos="fade-up"
+              data-aos-duration="1200"
+            >
               “We do not sing to be seen. We sing so that every person in the room meets Jesus —
               <span className="not-italic" style={{ color: "#F7DEDD" }}>
                 {" "}
@@ -139,34 +185,38 @@ export function HomeView(props: {
               </span>
               ”
             </p>
-            <p className="mt-7 text-[0.72rem] uppercase tracking-[0.28em] text-white/75">
+            <p
+              className="mt-7 text-[0.72rem] uppercase tracking-[0.28em] text-white/75"
+              data-aos="fade-up"
+              data-aos-delay="300"
+            >
               Jado Sinza & Esther Umulisa — Sinza Universal Company
             </p>
-          </Reveal>
+          </div>
         </div>
       </section>
 
       {/* ---------------- CONCERT LEDGER ---------------- */}
       <section className="mx-auto max-w-[1600px] px-5 py-24 sm:px-8 lg:pl-24 lg:pr-10">
         <div className="flex flex-wrap items-end justify-between gap-6">
-          <Reveal>
+          <div data-aos="fade-up">
             <Eyebrow>{t(lang, "section.schedule")}</Eyebrow>
             <h2 className="display-lg mt-5 font-display">
               Upcoming <span className="italic-voice">nights of worship</span>
             </h2>
-          </Reveal>
-          <Reveal delay={100}>
+          </div>
+          <div data-aos="fade-left" data-aos-delay="100">
             <Link href="/concerts" className="btn btn-ghost">
               Full schedule <ArrowRight size={16} />
             </Link>
-          </Reveal>
+          </div>
         </div>
 
         <div className="ledger mt-12">
           {concerts.slice(0, 5).map((c, i) => {
             const d = dayParts(c.startsAt);
             return (
-              <Reveal key={c.id} delay={i * 70}>
+              <div key={c.id} data-aos="fade-right" data-aos-delay={i * 80}>
                 <Link href={`/concerts/${c.slug}`} className="ledger-row group">
                   <div className="ledger-cell">
                     <p className="tnum font-display text-[1.95rem] leading-none">{d.day}</p>
@@ -190,33 +240,36 @@ export function HomeView(props: {
                     </span>
                   </div>
                 </Link>
-              </Reveal>
+              </div>
             );
           })}
         </div>
       </section>
 
       {/* ---------------- VIDEOS ---------------- */}
-      <SocialVideos lang={lang} />
+      <div data-aos="fade-up" data-aos-duration="1000">
+        <SocialVideos lang={lang} />
+      </div>
+
       {/* ---------------- STORE ---------------- */}
-      <section className="mx-auto max-w-[1600px] px-5 py-24 sm:px-8 lg:pl-24 lg:pr-10 hidden">
+      <section className="mx-auto hidden max-w-[1600px] px-5 py-24 sm:px-8 lg:pl-24 lg:pr-10">
         <div className="flex flex-wrap items-end justify-between gap-6">
-          <Reveal>
+          <div data-aos="fade-up">
             <Eyebrow>{t(lang, "section.store")}</Eyebrow>
             <h2 className="display-lg mt-5 font-display">
               Shop <span className="italic-voice">message</span>
             </h2>
-          </Reveal>
-          <Reveal delay={100}>
+          </div>
+          <div data-aos="fade-left" data-aos-delay="100">
             <Link href="/store" className="btn btn-primary">
               <ShoppingBag size={16} /> Shop everything
             </Link>
-          </Reveal>
+          </div>
         </div>
 
         <div className="mt-12 grid gap-7 sm:grid-cols-2 lg:grid-cols-4">
           {products.slice(0, 4).map((p, i) => (
-            <Reveal key={p.id} delay={i * 80}>
+            <div key={p.id} data-aos="zoom-in-up" data-aos-delay={i * 100} className="h-full">
               <Tilt className="h-full">
                 <Link href="/store" className="card card-hover block h-full overflow-hidden">
                   <div className="relative aspect-[4/5] overflow-hidden">
@@ -237,7 +290,7 @@ export function HomeView(props: {
                   </div>
                 </Link>
               </Tilt>
-            </Reveal>
+            </div>
           ))}
         </div>
       </section>
@@ -246,22 +299,22 @@ export function HomeView(props: {
       <section className="relative overflow-hidden bg-surface-2 py-24">
         <div className="mx-auto max-w-[1600px] px-5 sm:px-8 lg:pl-24 lg:pr-10">
           <div className="flex flex-wrap items-end justify-between gap-6">
-            <Reveal>
+            <div data-aos="fade-up">
               <Eyebrow>{t(lang, "section.news")}</Eyebrow>
               <h2 className="display-lg mt-5 font-display">
                 News, notes & <span className="italic-voice">press</span>
               </h2>
-            </Reveal>
-            <Reveal delay={100}>
+            </div>
+            <div data-aos="fade-left" data-aos-delay="100">
               <Link href="/news" className="btn btn-ghost">
                 <Newspaper size={16} /> All articles
               </Link>
-            </Reveal>
+            </div>
           </div>
 
           <div className="mt-12 grid gap-8 lg:grid-cols-3">
             {posts.slice(0, 3).map((p, i) => (
-              <Reveal key={p.id} delay={i * 90}>
+              <div key={p.id} data-aos="fade-up" data-aos-delay={i * 120} className="h-full">
                 <Link
                   href={`/news/${p.slug}`}
                   className="card card-hover group block h-full overflow-hidden"
@@ -293,7 +346,7 @@ export function HomeView(props: {
                     </span>
                   </div>
                 </Link>
-              </Reveal>
+              </div>
             ))}
           </div>
         </div>
@@ -301,10 +354,14 @@ export function HomeView(props: {
 
       {/* ---------------- NEWSLETTER ---------------- */}
       <section className="mx-auto max-w-[1600px] px-5 py-24 sm:px-8 lg:pl-24 lg:pr-10">
-        <div className="gradient-band relative overflow-hidden rounded-[calc(var(--radius)*1.6)] px-7 py-16 sm:px-14">
+        <div
+          className="gradient-band relative overflow-hidden rounded-[calc(var(--radius)*1.6)] px-7 py-16 sm:px-14"
+          data-aos="zoom-in"
+          data-aos-duration="1100"
+        >
           <div className="grain absolute inset-0" />
           <div className="relative grid gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
-            <div>
+            <div data-aos="fade-right" data-aos-delay="200">
               <span className="text-[0.68rem] uppercase tracking-[0.24em] text-white/75">
                 {t(lang, "section.newsletter")}
               </span>
@@ -316,7 +373,11 @@ export function HomeView(props: {
                 frequency when you subscribe, and leave whenever you want.
               </p>
             </div>
-            <div className="rounded-2xl bg-white/12 p-6 backdrop-blur-md">
+            <div
+              className="rounded-2xl bg-white/12 p-6 backdrop-blur-md"
+              data-aos="fade-left"
+              data-aos-delay="350"
+            >
               <NewsletterForm variant="panel" />
               <p className="mt-4 text-[0.76rem] text-white/70">
                 By subscribing you accept our{" "}
@@ -329,6 +390,6 @@ export function HomeView(props: {
           </div>
         </div>
       </section>
-    </>
+    </div>
   );
 }
